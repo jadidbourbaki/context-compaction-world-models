@@ -1,0 +1,63 @@
+name: shared-cache-batch-ced
+
+resources:
+  # Six CED runs, three seeds in each of the two experiments, run one after another on one GPU.
+  # Each 20,000-update run takes about eleven minutes on an RTX PRO 6000, so the batch takes
+  # about seventy minutes and costs about four dollars there. One H100 is preferred when it has
+  # capacity.
+  ordered:
+    - infra: aws/us-east-1
+      accelerators: H100:1
+    - infra: aws/us-east-2
+      accelerators: H100:1
+    - infra: aws/us-west-2
+      accelerators: H100:1
+    - infra: aws/us-east-1
+      accelerators: RTXPRO6000:1
+    - infra: aws/us-east-2
+      accelerators: RTXPRO6000:1
+    - infra: aws/us-west-2
+      accelerators: RTXPRO6000:1
+    - infra: aws/eu-central-1
+      accelerators: RTXPRO6000:1
+  disk_size: 128
+  autostop:
+    idle_minutes: 15
+    down: true
+
+workdir: .
+
+file_mounts:
+  /bucket:
+    source: s3://hayder-shared-cache-world-model
+    mode: MOUNT
+
+envs:
+  COMMON_ARGS: >-
+    --recording /bucket/data/roomnav_train
+    --probe-recording /bucket/data/roomnav_eval
+    --model.kind ced
+    --steps 20000
+    --probe-every 5000
+  SEEDS: 42 43 44
+
+setup: |
+  set -euo pipefail
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  uv sync --locked --managed-python
+
+run: |
+  set -euo pipefail
+  export PATH="$HOME/.local/bin:$PATH"
+  nvidia-smi
+  for seed in $SEEDS; do
+    # Same context: the CED arm reads all 128 transitions, as the per-layer and shared arms did.
+    uv run python -m shared_cache_world_model.train $COMMON_ARGS \
+      --experiment roomnav_transition_v1 --seed $seed --out /bucket/results
+    # Equal growing cache: four upper pairs over 32 transitions hold the 2,304 vectors that the
+    # shared arm holds over 128 and the windowed per-layer arm holds over 16.
+    uv run python -m shared_cache_world_model.train $COMMON_ARGS \
+      --experiment roomnav_equal_memory_v1 --model.global-window 32 --seed $seed \
+      --run-name roomnav_equal_memory_v1_ced_g32_h128_s${seed} --out /bucket/results
+  done

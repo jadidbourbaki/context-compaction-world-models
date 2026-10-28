@@ -1,0 +1,59 @@
+name: shared-cache-batch-ced-full
+
+resources:
+  # Three same-context runs of the ced_full arm, one per seed, one after another on one GPU.
+  # Each 20,000-update run takes about eight minutes on an RTX PRO 6000, so the batch takes
+  # about half an hour and costs about two dollars there. One H100 is preferred when it has
+  # capacity.
+  ordered:
+    - infra: aws/us-east-1
+      accelerators: H100:1
+    - infra: aws/us-east-2
+      accelerators: H100:1
+    - infra: aws/us-west-2
+      accelerators: H100:1
+    - infra: aws/us-east-1
+      accelerators: RTXPRO6000:1
+    - infra: aws/us-east-2
+      accelerators: RTXPRO6000:1
+    - infra: aws/us-west-2
+      accelerators: RTXPRO6000:1
+    - infra: aws/eu-central-1
+      accelerators: RTXPRO6000:1
+  disk_size: 128
+  autostop:
+    idle_minutes: 15
+    down: true
+
+workdir: .
+
+file_mounts:
+  /bucket:
+    source: s3://hayder-shared-cache-world-model
+    mode: MOUNT
+
+envs:
+  COMMON_ARGS: >-
+    --recording /bucket/data/roomnav_train
+    --probe-recording /bucket/data/roomnav_eval
+    --model.kind ced_full
+    --experiment roomnav_transition_v1
+    --steps 20000
+    --probe-every 5000
+  SEEDS: 42 43 44
+
+setup: |
+  set -euo pipefail
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  uv sync --locked --managed-python
+
+run: |
+  set -euo pipefail
+  export PATH="$HOME/.local/bin:$PATH"
+  nvidia-smi
+  # Same context only. The arm holds the per-layer cache, so it has no separate equal-cache
+  # condition: against per_layer it isolates where the upper blocks' keys and values come from.
+  for seed in $SEEDS; do
+    uv run python -m shared_cache_world_model.train $COMMON_ARGS --seed $seed --out /bucket/results
+  done

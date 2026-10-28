@@ -1,0 +1,58 @@
+{
+  "config": {
+    "seed": 42,
+    "room_pairs": 8,
+    "steps": 600,
+    "d_model": 64,
+    "n_heads": 4,
+    "n_layers": 4,
+    "lr": 0.003,
+    "min_accuracy": 0.95,
+    "min_retrieval_gain": 0.5,
+    "device": "cpu",
+    "out": "results/local_task_overfit.json"
+  },
+  "scores": [
+    {
+      "kind": "per_layer",
+      "accuracy": 1.0,
+      "shuffled_accuracy": 0.3410256505012512,
+      "retrieval_gain": 0.6589743494987488,
+      "final_loss": 0.001350268255919218,
+      "passed": true
+    },
+    {
+      "kind": "shared_cache",
+      "accuracy": 1.0,
+      "shuffled_accuracy": 0.3410256505012512,
+      "retrieval_gain": 0.6589743494987488,
+      "final_loss": 0.001359401037916541,
+      "passed": true
+    },
+    {
+      "kind": "ced",
+      "accuracy": 1.0,
+      "shuffled_accuracy": 0.3410256505012512,
+      "retrieval_gain": 0.6589743494987488,
+      "final_loss": 0.001328883459791541,
+      "passed": true
+    },
+    {
+      "kind": "ced_full",
+      "accuracy": 1.0,
+      "shuffled_accuracy": 0.3410256505012512,
+      "retrieval_gain": 0.6589743494987488,
+      "final_loss": 0.0013690951745957136,
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "commit": "031fdad406f7e32f6cd3021adc01f2b655adfec1",
+  "versions": {
+    "torch": "2.14.0",
+    "numpy": "2.5.3"
+  },
+  "device": "cpu",
+  "started": "2026-09-22T18:21:45+00:00",
+  "duration_seconds": 36.2
+}

@@ -1,0 +1,63 @@
+name: shared-cache-batch
+
+resources:
+  # Six runs, both models at three seeds, take one GPU each and run at the same time. An
+  # eight-GPU RTX PRO 6000 box is the capacity fallback for the preferred H100 box.
+  ordered:
+    - infra: aws/us-east-1
+      accelerators: H100:8
+    - infra: aws/us-west-1
+      accelerators: H100:8
+    - infra: aws/eu-north-1
+      accelerators: H100:8
+    - infra: aws/us-east-1
+      accelerators: RTXPRO6000:8
+    - infra: aws/eu-central-1
+      accelerators: RTXPRO6000:8
+    - infra: aws/us-west-2
+      accelerators: RTXPRO6000:8
+    - infra: aws/ap-northeast-2
+      accelerators: RTXPRO6000:8
+    - infra: aws/us-east-2
+      accelerators: RTXPRO6000:8
+  disk_size: 256
+  autostop:
+    idle_minutes: 15
+    down: true
+
+workdir: .
+
+file_mounts:
+  /bucket:
+    source: s3://hayder-shared-cache-world-model
+    mode: MOUNT
+
+envs:
+  COMMON_ARGS: >-
+    --recording /bucket/data/roomnav_train
+    --probe-recording /bucket/data/roomnav_eval
+    --experiment roomnav_transition_v1
+    --steps 20000
+    --probe-every 5000
+  SEEDS: 42 43 44
+
+setup: |
+  set -euo pipefail
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  uv sync --locked --managed-python
+
+run: |
+  set -euo pipefail
+  export PATH="$HOME/.local/bin:$PATH"
+  nvidia-smi
+  gpu=0
+  for seed in $SEEDS; do
+    for kind in per_layer shared_cache; do
+      CUDA_VISIBLE_DEVICES=$gpu uv run python -m shared_cache_world_model.train $COMMON_ARGS \
+        --model.kind $kind --seed $seed --out /bucket/results > run_${kind}_${seed}.log 2>&1 &
+      gpu=$((gpu + 1))
+    done
+  done
+  wait
+  tail -n 3 run_*.log

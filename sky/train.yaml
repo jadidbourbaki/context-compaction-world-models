@@ -1,0 +1,54 @@
+name: shared-cache-train
+
+resources:
+  # One H100 at 6.88 dollars an hour is preferred. One RTX PRO 6000 Blackwell at 3.36 dollars
+  # an hour is the first fallback. One L40S at 1.86 dollars an hour is the final fallback. The
+  # bucket lives in us-east-1 and mounts from any region.
+  ordered:
+    - infra: aws/us-east-1
+      accelerators: H100:1
+    - infra: aws/us-east-2
+      accelerators: H100:1
+    - infra: aws/us-west-2
+      accelerators: H100:1
+    - infra: aws/us-east-1
+      accelerators: RTXPRO6000:1
+    - infra: aws/us-east-2
+      accelerators: RTXPRO6000:1
+    - infra: aws/us-west-2
+      accelerators: RTXPRO6000:1
+    - infra: aws/us-east-1
+      accelerators: L40S:1
+    - infra: aws/us-east-2
+      accelerators: L40S:1
+    - infra: aws/us-west-2
+      accelerators: L40S:1
+  disk_size: 128
+  autostop:
+    idle_minutes: 30
+    down: true
+
+workdir: .
+
+# The project bucket is mounted whole, since SkyPilot mounts buckets and not prefixes. A run
+# reads its recording from /bucket/data and writes its checkpoint, probe, and summary under
+# /bucket/results.
+file_mounts:
+  /bucket:
+    source: s3://hayder-shared-cache-world-model
+    mode: MOUNT
+
+envs:
+  TRAIN_ARGS: --recording /bucket/data/roomnav_train --probe-recording /bucket/data/roomnav_eval --model.kind per_layer --steps 100
+
+setup: |
+  set -euo pipefail
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  uv sync --locked --managed-python
+
+run: |
+  set -euo pipefail
+  export PATH="$HOME/.local/bin:$PATH"
+  nvidia-smi
+  uv run python -m shared_cache_world_model.train $TRAIN_ARGS --out /bucket/results

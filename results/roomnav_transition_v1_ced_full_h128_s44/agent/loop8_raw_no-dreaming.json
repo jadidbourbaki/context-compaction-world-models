@@ -1,0 +1,100 @@
+{
+  "config": {
+    "checkpoint": "weights/roomnav_transition_v1_ced_full_h128_s44/weights.pt",
+    "context": "raw",
+    "seed": 43,
+    "dreaming": false,
+    "episodes": 10,
+    "steps": 512,
+    "policy": "loop",
+    "loop_steps": 8,
+    "bins": [
+      1,
+      8,
+      16,
+      32,
+      64,
+      128,
+      256,
+      512
+    ],
+    "device": null,
+    "out": "results/roomnav_transition_v1_ced_full_h128_s44/agent/loop8_raw_no-dreaming.json",
+    "save_records": false
+  },
+  "by_gap": {
+    "1-7": {
+      "accuracy": 0.9726167753776094,
+      "self_consistency": 0.9726167753776094,
+      "other_room_consistency": 0.30355763551016596,
+      "consistency_gain": 0.6690591398674435,
+      "shuffled_accuracy": 0.7085026382525403,
+      "retrieval_gain": 0.26411413712506904,
+      "n": 886
+    },
+    "8-15": {
+      "accuracy": 0.9551459319672094,
+      "self_consistency": 0.9551459319672094,
+      "other_room_consistency": 0.30218595643563834,
+      "consistency_gain": 0.6529599755315711,
+      "shuffled_accuracy": 0.3601244714242705,
+      "retrieval_gain": 0.5950214605429389,
+      "n": 1302
+    },
+    "16-31": {
+      "accuracy": 0.9381964328986185,
+      "self_consistency": 0.9381964328986185,
+      "other_room_consistency": 0.3049645233501607,
+      "consistency_gain": 0.6332319095484578,
+      "shuffled_accuracy": 0.3641854189035388,
+      "retrieval_gain": 0.5740110139950798,
+      "n": 619
+    },
+    "32-63": {
+      "accuracy": 0.8305976622665239,
+      "self_consistency": 0.8305976622665239,
+      "other_room_consistency": 0.3193239404545138,
+      "consistency_gain": 0.51127372181201,
+      "shuffled_accuracy": 0.3676103409448964,
+      "retrieval_gain": 0.46298732132162745,
+      "n": 538
+    },
+    "64-127": {
+      "accuracy": 0.4774525904925237,
+      "self_consistency": 0.4774525904925237,
+      "other_room_consistency": 0.37943628214434394,
+      "consistency_gain": 0.09801630834817976,
+      "shuffled_accuracy": 0.370260770094108,
+      "retrieval_gain": 0.10719182039841568,
+      "n": 707
+    },
+    "128-255": {
+      "accuracy": 0.3995233003522309,
+      "self_consistency": 0.3995233003522309,
+      "other_room_consistency": 0.39207438507957654,
+      "consistency_gain": 0.007448915272654344,
+      "shuffled_accuracy": 0.36128567045843096,
+      "retrieval_gain": 0.03823762989379992,
+      "n": 355
+    },
+    "256-511": {
+      "accuracy": 0.3983866384859835,
+      "self_consistency": 0.3983866384859835,
+      "other_room_consistency": 0.39310266903587127,
+      "consistency_gain": 0.005283969450112225,
+      "shuffled_accuracy": 0.39031980077872114,
+      "retrieval_gain": 0.008066837707262353,
+      "n": 89
+    }
+  },
+  "loop_gap": {
+    "accuracy": 0.9538621821440756,
+    "self_consistency": 0.9538621821440756,
+    "other_room_consistency": 0.3004573857045834,
+    "consistency_gain": 0.6534047964394922,
+    "shuffled_accuracy": 0.3586538540199399,
+    "retrieval_gain": 0.5952083281241357,
+    "n": 320
+  },
+  "records": []
+}

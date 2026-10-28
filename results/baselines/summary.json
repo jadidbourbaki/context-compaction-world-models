@@ -1,0 +1,17 @@
+{
+  "baselines": {
+    "rooms": 25528.0,
+    "transition_frames": 204400.0,
+    "revisits": 179272.0,
+    "most_common_tile": 0.4175,
+    "previous_frame": 0.31,
+    "last_visit_frame": 1.0,
+    "bits_per_room": 423.6678
+  },
+  "recording": "data/roomnav_eval",
+  "recording_sha256": "2771c1874b46c60592ccc1a296b8d87914b006495489a38fd780c517f18da5ba",
+  "commit": "c517b85307f7a227c52cfed413d35e924badbb4b",
+  "versions": {
+    "numpy": "2.5.3"
+  }
+}

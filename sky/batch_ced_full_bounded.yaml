@@ -1,0 +1,48 @@
+name: shared-cache-batch-ced-full-bounded
+
+resources:
+  # Three bounded ced_full runs, one per seed, run one after another on one H100. Each
+  # 20,000-update run takes about ten minutes on a GPU of this class, so the batch costs a few
+  # dollars on Nebius.
+  infra: nebius
+  accelerators: H100:1
+  disk_size: 128
+  autostop:
+    idle_minutes: 15
+    down: true
+
+workdir: .
+
+# Nebius storage is not configured, so the two recordings upload from the laptop.
+file_mounts:
+  /data/roomnav_train: data/roomnav_train
+  /data/roomnav_eval: data/roomnav_eval
+
+envs:
+  # Equal growing cache: every one of the eight blocks keeps 16 steps, so the model holds the
+  # 2,304 vectors that the windowed per-layer, ced, and shared_cache arms hold.
+  COMMON_ARGS: >-
+    --recording /data/roomnav_train
+    --probe-recording /data/roomnav_eval
+    --model.kind ced_full
+    --model.per-layer-window 16
+    --model.global-window 16
+    --steps 20000
+    --probe-every 5000
+    --experiment roomnav_equal_memory_v1
+  SEEDS: 42 43 44
+
+setup: |
+  set -euo pipefail
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  uv sync --locked --managed-python
+
+run: |
+  set -euo pipefail
+  export PATH="$HOME/.local/bin:$PATH"
+  nvidia-smi
+  for seed in $SEEDS; do
+    uv run python -m shared_cache_world_model.train $COMMON_ARGS --seed $seed \
+      --run-name roomnav_equal_memory_v1_ced_full_w16_g16_h128_s${seed} --out ~/results
+  done

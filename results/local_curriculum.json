@@ -1,0 +1,30 @@
+{
+  "config": {
+    "seed": 42,
+    "steps": 600,
+    "batch_size": 8,
+    "evaluation_batches": 20,
+    "d_model": 64,
+    "n_heads": 4,
+    "n_layers": 4,
+    "lr": 0.003,
+    "device": "cpu",
+    "out": "results/local_curriculum.json"
+  },
+  "scores": [
+    {
+      "kind": "per_layer",
+      "accuracy": 1.0,
+      "shuffled_accuracy": 0.11875,
+      "retrieval_gain": 0.88125,
+      "final_loss": 0.0025615443009883165
+    },
+    {
+      "kind": "shared_cache",
+      "accuracy": 1.0,
+      "shuffled_accuracy": 0.11875,
+      "retrieval_gain": 0.88125,
+      "final_loss": 0.0016873283311724663
+    }
+  ]
+}
