@@ -1,16 +1,15 @@
-"""Render docs/demo.gif, a CED world agent closing two loops with compaction and dreaming."""
+"""Render docs/demo.gif, two CED world agents walking a loop longer than the raw window."""
 
 from pathlib import Path
 
 import torch
 from PIL import Image, ImageDraw, ImageFont
 
-from shared_cache_world_model.agent import plan_loop
+from shared_cache_world_model.agent import StepRecord, plan_loop
 from shared_cache_world_model.play import (
     CONTEXTS,
     MODELS,
     PANEL,
-    STEP_SECONDS,
     Session,
     load_run,
     render_map,
@@ -19,38 +18,48 @@ from shared_cache_world_model.world import add_character, render_room
 
 OUT = Path(__file__).parent / "demo.gif"
 SEED = 43
-LOOPS = (16, 64)
+# The loop returns to its start room 192 steps later, past the 128-step raw window.
+LOOP_STEPS = 192
 GAP = 12
 HEADER = 32
-HOLD_SECONDS = 2.0
+STEP_SECONDS = 0.06
+START_SECONDS = 1.0
+END_SECONDS = 4.0
 BACKGROUND = (255, 255, 255)
 INK = (0, 0, 0)
 
 
-def frame(session: Session, font: ImageFont.FreeTypeFont) -> Image.Image:
-    """The map, the agent's room, and the true room side by side under their titles."""
-    remembered = session.record.remembered if session.record is not None else None
+def room_pixels(session: Session) -> Image.Image:
+    """The room the agent holds for its current room, with the character."""
+    return Image.fromarray(render_room(add_character(session.agent.view.numpy())))
+
+
+def frame(
+    raw: Session,
+    compacted: Session,
+    records: tuple[StepRecord | None, StepRecord | None],
+    font: ImageFont.FreeTypeFont,
+) -> Image.Image:
+    """The map, the raw window agent, the compaction agent, and the true room under titles."""
+    truth = render_room(add_character(raw.agent.true_room(raw.agent.room).numpy()))
     panels = [
-        ("Map", render_map(session)),
-        ("Agent", render_room(add_character(session.agent.view.numpy()))),
-        (
-            "Ground Truth",
-            render_room(add_character(session.agent.true_room(session.agent.room).numpy())),
-        ),
+        ("Map", Image.fromarray(render_map(raw)), None),
+        ("Raw Window", room_pixels(raw), records[0]),
+        ("Context Compaction", room_pixels(compacted), records[1]),
+        ("Ground Truth", Image.fromarray(truth), None),
     ]
-    width = 3 * PANEL + 4 * GAP
+    width = len(panels) * PANEL + (len(panels) + 1) * GAP
     height = HEADER + PANEL + GAP
     image = Image.new("RGB", (width, height), BACKGROUND)
     draw = ImageDraw.Draw(image)
-    for index, (title, pixels) in enumerate(panels):
+    for index, (title, pixels, record) in enumerate(panels):
         left = GAP + index * (PANEL + GAP)
         draw.text((left, HEADER // 2), title, fill=INK, font=font, anchor="lm")
-        image.paste(Image.fromarray(pixels), (left, HEADER))
-    # A predicted revisit shows its accuracy at the right of the agent's title.
-    if remembered is not None:
-        right = 2 * (PANEL + GAP)
-        accuracy = f"{100 * remembered.accuracy:.1f}%"
-        draw.text((right, HEADER // 2), accuracy, fill=INK, font=font, anchor="rm")
+        image.paste(pixels, (left, HEADER))
+        # A predicted revisit shows its accuracy at the right of the agent's title.
+        if record is not None and record.remembered is not None:
+            accuracy = f"{100 * record.remembered.accuracy:.0f}%"
+            draw.text((left + PANEL, HEADER // 2), accuracy, fill=INK, font=font, anchor="rm")
     return image
 
 
@@ -59,20 +68,25 @@ def main() -> None:
     if device is None:
         raise RuntimeError("no accelerator found")
     model, state = load_run(MODELS["CED"], str(device))
-    session = Session(model, state, SEED, CONTEXTS["Context Compaction"])
+    # Both agents see the same world from the same start room and take the same actions.
+    raw = Session(model, state, SEED, CONTEXTS["Raw Window"])
+    compacted = Session(model, state, SEED, CONTEXTS["Context Compaction"])
     font = ImageFont.load_default(size=18)
-    frames = [frame(session, font)]
-    durations = [HOLD_SECONDS]
-    for loop_steps in LOOPS:
-        previous_action = session.agent.actions[-1] if session.agent.actions else None
-        session.queued = plan_loop(
-            session.world_settings, session.agent.room, loop_steps, previous_action, session.rng
-        )
-        while session.queued:
-            session.record = session.agent.step(session.queued.pop(0))
-            frames.append(frame(session, font))
-            durations.append(STEP_SECONDS)
-        durations[-1] = HOLD_SECONDS
+    actions = plan_loop(raw.world_settings, raw.agent.room, LOOP_STEPS, None, raw.rng)
+    raw.queued = list(actions)
+    records: tuple[StepRecord | None, StepRecord | None] = (None, None)
+    frames = [frame(raw, compacted, records, font)]
+    durations = [START_SECONDS]
+    for action in actions:
+        raw.queued.pop(0)
+        records = (raw.agent.step(action), compacted.agent.step(action))
+        frames.append(frame(raw, compacted, records, font))
+        durations.append(STEP_SECONDS)
+    durations[-1] = END_SECONDS
+    for name, record in zip(("raw window", "context compaction"), records, strict=True):
+        if record is None or record.remembered is None:
+            raise RuntimeError("the loop must end on a revisit")
+        print(f"{name}: gap {record.gap}, accuracy {record.remembered.accuracy:.3f}")
     # The sprites and the route use a handful of colours, so an adaptive palette keeps them exact.
     palette_frames = [image.quantize(colors=16, dither=Image.Dither.NONE) for image in frames]
     palette_frames[0].save(
