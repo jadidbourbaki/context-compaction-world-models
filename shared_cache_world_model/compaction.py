@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 import networkx as nx
 import numpy as np
@@ -12,6 +13,7 @@ from shared_cache_world_model.world import MOVES
 
 # The action that moves from one position to a neighbouring one, keyed by the row and column step.
 ACTION_BY_MOVE = {move: action for action, move in enumerate(MOVES)}
+StepSelection = Literal["latest", "earliest_strict", "earliest_all"]
 
 
 @dataclass(frozen=True)
@@ -49,7 +51,9 @@ def positions_from_actions(actions: np.ndarray) -> np.ndarray:
     return positions
 
 
-def plan_walk(actions: np.ndarray) -> Walk:
+def plan_walk(
+    actions: np.ndarray, step_selection: StepSelection = "latest"
+) -> Walk:
     """Plan a short walk through every visited room that ends at the current one."""
     # The planner reads only the actions. Dead reckoning gives it the visited positions and the
     # current one without any frame.
@@ -57,10 +61,12 @@ def plan_walk(actions: np.ndarray) -> Walk:
     if positions.shape[0] == 0:
         raise ValueError("a transcript with no steps has no walk")
     current = (int(positions[-1, 0]), int(positions[-1, 1]))
-    # latest_step: position -> the last transcript step that stood at it.
+    earliest_step: dict[tuple[int, int], int] = {}
     latest_step: dict[tuple[int, int], int] = {}
     for step in range(positions.shape[0]):
-        latest_step[(int(positions[step, 0]), int(positions[step, 1]))] = step
+        pos = (int(positions[step, 0]), int(positions[step, 1]))
+        earliest_step.setdefault(pos, step)
+        latest_step[pos] = step
     visited = list(latest_step)
     # The visited positions form a connected region of the grid, because the character walked
     # between them. The region graph joins each position to its visited neighbours.
@@ -86,8 +92,10 @@ def plan_walk(actions: np.ndarray) -> Walk:
             route = reversed_route + from_first[1:]
         else:
             route = route + from_last[1:]
-    # source_steps: (length,) int64, the newest transcript step at each position of the route.
-    source_steps = np.array([latest_step[position] for position in route], dtype=np.int64)
+    step_map = latest_step if step_selection == "latest" else earliest_step
+    source_steps = np.array([step_map[position] for position in route], dtype=np.int64)
+    if step_selection == "earliest_strict":
+        source_steps[-1] = positions.shape[0] - 1
     # walk_actions: (length,) int64, the move between consecutive positions of the route.
     walk_actions = np.zeros(len(route), dtype=np.int64)
     for index in range(len(route) - 1):
@@ -97,17 +105,26 @@ def plan_walk(actions: np.ndarray) -> Walk:
     return Walk(source_steps=source_steps, actions=walk_actions)
 
 
-def compact(actions: torch.Tensor, tiles: torch.Tensor) -> Transcript:
+def compact(
+    actions: torch.Tensor,
+    tiles: torch.Tensor,
+    step_selection: StepSelection = "latest",
+) -> Transcript:
     """Compact a transcript of actions and room tiles into the frames and actions of its walk."""
     if tiles.shape[0] != actions.shape[0]:
         raise ValueError(f"{tiles.shape[0]} frames do not match {actions.shape[0]} actions")
-    walk = plan_walk(actions.cpu().numpy())
+    walk = plan_walk(actions.cpu().numpy(), step_selection=step_selection)
     # frames: (length, 16, 16) uint8, each room's newest frame gathered from the transcript.
     frames = tiles[torch.from_numpy(walk.source_steps)]
     return Transcript(frames=frames, actions=torch.from_numpy(walk.actions))
 
 
-def compact_when_full(actions: torch.Tensor, tiles: torch.Tensor, history: int) -> Transcript:
+def compact_when_full(
+    actions: torch.Tensor,
+    tiles: torch.Tensor,
+    history: int,
+    step_selection: StepSelection = "latest",
+) -> Transcript:
     """The context of a harness that appends raw steps and compacts only when it holds history."""
     if tiles.shape[0] != actions.shape[0]:
         raise ValueError(f"{tiles.shape[0]} frames do not match {actions.shape[0]} actions")
@@ -116,7 +133,7 @@ def compact_when_full(actions: torch.Tensor, tiles: torch.Tensor, history: int) 
     last_compaction: int | None = None
     for step in range(int(actions.shape[0])):
         if context_steps == history:
-            walk = plan_walk(actions[:step].cpu().numpy())
+            walk = plan_walk(actions[:step].cpu().numpy(), step_selection=step_selection)
             context_steps = len(walk.source_steps)
             if context_steps >= history:
                 raise ValueError(f"a walk of {context_steps} steps leaves no room in {history}")
@@ -124,7 +141,9 @@ def compact_when_full(actions: torch.Tensor, tiles: torch.Tensor, history: int) 
         context_steps += 1
     if last_compaction is None:
         return Transcript(frames=tiles, actions=actions)
-    kept = compact(actions[:last_compaction], tiles[:last_compaction])
+    kept = compact(
+        actions[:last_compaction], tiles[:last_compaction], step_selection=step_selection
+    )
     frames = torch.cat([kept.frames, tiles[last_compaction:]], dim=0)
     kept_actions = torch.cat([kept.actions, actions[last_compaction:]], dim=0)
     return Transcript(frames=frames, actions=kept_actions)

@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field, FilePath, model_validator
 
 from shared_cache_world_model.compaction import (
     ACTION_BY_MOVE,
+    StepSelection,
     Transcript,
     compact,
     compact_when_full,
@@ -70,6 +71,10 @@ class AgentSettings(BaseModel):
     # raw: the last history steps. compacted: the walk on every call. compacted_when_full: raw
     # steps until the window fills, then the walk.
     context: ContextMode = Field(description="raw, compacted, or compacted_when_full")
+    step_selection: StepSelection = Field(
+        default="latest",
+        description="step retained per compacted room: latest, earliest_strict, or earliest_all",
+    )
     seed: int = Field(default=43, description="world seed, which must differ from training")
     dreaming: bool = Field(default=True, description="revisits enter the transcript as predicted")
     episodes: int = Field(default=10, ge=1)
@@ -166,6 +171,7 @@ class Agent:
         dreaming: bool,
         donor: Transcript | None = None,
         preserved_steps: int = 0,
+        step_selection: StepSelection = "latest",
     ) -> None:
         self.model = model
         self.world = world
@@ -179,6 +185,7 @@ class Agent:
         # control context. preserved_steps: the steps at the end of the context that stay.
         self.donor = donor
         self.preserved_steps = preserved_steps
+        self.step_selection: StepSelection = step_selection
         self.room = start_room
         self.step_count = 0
         # frames: one (16, 16) uint8 room per step, observed on a first visit and predicted on a
@@ -213,8 +220,10 @@ class Agent:
             start = max(0, frames.shape[0] - self.history)
             return Transcript(frames=frames[start:], actions=actions[start:])
         if self.context == "compacted_when_full":
-            return compact_when_full(actions, frames, self.history)
-        return compact(actions, frames)
+            return compact_when_full(
+                actions, frames, self.history, step_selection=self.step_selection
+            )
+        return compact(actions, frames, step_selection=self.step_selection)
 
     def next_context_steps(self) -> int:
         """The steps the model would read if the next room were a revisit."""
@@ -501,6 +510,7 @@ def main(settings: AgentSettings) -> None:
             settings.dreaming,
             donor=donor,
             preserved_steps=model.local_receptive_steps(),
+            step_selection=settings.step_selection,
         )
         walker = RoomWalker(rng)
         # Under the loop policy, 8 walker steps after an 8-step loop carry the agent to new rooms

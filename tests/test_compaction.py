@@ -141,3 +141,18 @@ def test_positions_reject_a_two_dimensional_array() -> None:
 def test_compact_rejects_mismatched_frames_and_actions() -> None:
     with pytest.raises(ValueError, match="do not match"):
         compact(torch.zeros(3, dtype=torch.int64), torch.zeros(2, 16, 16, dtype=torch.uint8))
+
+
+def test_earliest_step_selections_preserve_first_visit_anchors() -> None:
+    # Positions along steps 0..5: 0 -> 1 -> 2 -> 1 -> 0 -> 1 (ends at pos 1, step 5).
+    actions = np.array([RIGHT, RIGHT, LEFT, LEFT, RIGHT, RIGHT], dtype=np.int64)
+    walk_latest = plan_walk(actions, step_selection="latest")
+    walk_strict = plan_walk(actions, step_selection="earliest_strict")
+    walk_all = plan_walk(actions, step_selection="earliest_all")
+
+    assert walk_latest.source_steps[-1] == 5
+    assert walk_strict.source_steps[-1] == 5
+    # Historical rooms in earliest_strict and all rooms in earliest_all come from first visits {0,1,2}.
+    assert set(walk_strict.source_steps[:-1].tolist()).issubset({0, 1, 2})
+    assert set(walk_all.source_steps.tolist()).issubset({0, 1, 2})
+    assert walk_all.source_steps[-1] == 1
